@@ -3,66 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard Aluno - Biblioteca</title>
+    <meta name="description" content="Dashboard do Aluno — Acompanhe seus empréstimos, reservas e prazos na Biblioteca Digital IMSIL.">
+    <title>Dashboard — Biblioteca Digital IMSIL</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <header>
-        <div class="logo"><b>📚 Biblioteca Digital</b></div>
+        <div class="logo"><span class="logo-icon">📚</span> Biblioteca Digital</div>
         <nav>
-            <a href="dashboard.html" style="margin-right: 1.5rem; text-decoration: none; color: var(--primary); font-weight: 600;">Início</a>
-            <a href="catalogo.html" style="margin-right: 1.5rem; text-decoration: none; color: var(--text-muted);">Ver Acervo</a>
-            <button onclick="LibraryApp.logout()" class="btn-small btn-secondary">Sair</button>
+            <a href="dashboard.html" class="nav-link active">Dashboard</a>
+            <a href="catalogo.html" class="nav-link">Catálogo</a>
+            <button class="btn btn-sm btn-ghost" onclick="Auth.logout()">Sair</button>
         </nav>
     </header>
 
     <main>
-        <div class="flex-row">
-            <h1>Olá, <span id="userName">Aluno</span></h1>
-            <a href="catalogo.html" class="btn-small" style="text-decoration: none; display: inline-block; text-align: center;">Buscar Novos Livros</a>
+        <div class="page-header flex-row">
+            <div>
+                <h1>Olá, <span id="userName">Aluno</span> 👋</h1>
+                <p>Acompanhe suas reservas e empréstimos</p>
+            </div>
+            <a href="catalogo.html" class="btn btn-primary">Buscar Novos Livros</a>
         </div>
 
-        <section class="mt-4">
-            <h2>Meus Empréstimos e Reservas</h2>
-            <div id="loansList" class="book-grid">
+        <!-- Stats -->
+        <div class="stats-grid" id="statsContainer"></div>
+
+        <!-- Filtros -->
+        <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="ativos">Ativos</button>
+            <button class="filter-tab" data-filter="pendentes">Pendentes</button>
+            <button class="filter-tab" data-filter="historico">Histórico Completo</button>
+        </div>
+
+        <!-- Empréstimos -->
+        <section>
+            <div class="loans-list" id="loansContainer">
                 <!-- Preenchido via JS -->
-            </div>
-            <div id="noLoans" class="hidden" style="text-align: center; padding: 3rem; color: var(--text-muted);">
-                Você não possui livros reservados ou emprestados no momento.
             </div>
         </section>
     </main>
 
+    <script src="js/storage.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/app.js"></script>
     <script>
-        const user = LibraryApp.getCurrentUser();
-        if (!user || user.tipo !== 'aluno') window.location.href = 'index.html';
-        
+        const user = Auth.protegerRota('aluno');
+        if (!user) throw new Error('Redirecionando...');
+
         document.getElementById('userName').textContent = user.nome.split(' ')[0];
 
-        function renderLoans() {
-            const allLoans = LibraryApp.getLoans();
-            const myLoans = allLoans.filter(l => l.usuarioId === user.id);
-            const container = document.getElementById('loansList');
-            const noLoans = document.getElementById('noLoans');
+        const loansContainer = document.getElementById('loansContainer');
+        const statsContainer = document.getElementById('statsContainer');
+        const filterTabs = document.querySelectorAll('.filter-tab[data-filter]');
+        let currentFilter = 'ativos';
 
-            if (myLoans.length === 0) {
-                noLoans.classList.remove('hidden');
-                return;
-            }
-
-            container.innerHTML = myLoans.map(loan => `
-                <div class="book-card">
-                    <div class="book-info">
-                        <div class="book-title">${loan.livroTitulo}</div>
-                        <div class="book-author">Solicitado em: ${loan.dataSaida}</div>
-                        <div class="book-author">Entrega prevista: ${loan.dataEntrega}</div>
-                        <span class="badge badge-${loan.status}">${loan.status}</span>
-                    </div>
-                </div>
-            `).join('');
+        // --- Stats ---
+        function renderStats() {
+            const stats = App.getEstatisticasAluno(user.id);
+            UI.renderStatsCards(statsContainer, [
+                { icon: '📖', value: stats.ativos, label: 'Em mãos' },
+                { icon: '⏳', value: stats.pendentes, label: 'Pendentes' },
+                { icon: '✅', value: stats.devolvidos, label: 'Devolvidos' },
+                { icon: '⚠️', value: stats.atrasados, label: 'Atrasados' },
+            ]);
         }
 
+        // --- Filtros ---
+        filterTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                filterTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFilter = tab.dataset.filter;
+                renderLoans();
+            });
+        });
+
+        // --- Empréstimos ---
+        function renderLoans() {
+            const allLoans = Storage.getEmprestimos().filter(e => e.usuario_id === user.id);
+            let filtered;
+
+            switch (currentFilter) {
+                case 'ativos':
+                    filtered = allLoans.filter(e => e.status === 'aprovado' || e.status === 'atrasado');
+                    break;
+                case 'pendentes':
+                    filtered = allLoans.filter(e => e.status === 'pendente');
+                    break;
+                case 'historico':
+                default:
+                    filtered = allLoans;
+                    break;
+            }
+
+            // Ordenar: mais recentes primeiro
+            filtered.sort((a, b) => new Date(b.data_reserva) - new Date(a.data_reserva));
+
+            UI.renderEmprestimosAluno(loansContainer, filtered);
+        }
+
+        renderStats();
         renderLoans();
     </script>
 </body>

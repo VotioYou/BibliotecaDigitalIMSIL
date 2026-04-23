@@ -3,68 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Admin - Biblioteca</title>
+    <meta name="description" content="Painel Administrativo — Gerencie empréstimos, aprovações e devoluções da Biblioteca Digital IMSIL.">
+    <title>Admin — Biblioteca Digital IMSIL</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <header>
-        <div class="logo"><b>📚 Admin Biblioteca</b></div>
+        <div class="logo"><span class="logo-icon">🛠️</span> Painel Administrativo</div>
         <nav>
-            <button onclick="LibraryApp.logout()" class="btn-small btn-secondary">Sair</button>
+            <a href="admin.html" class="nav-link active">Gestão</a>
+            <a href="catalogo.html" class="nav-link">Catálogo</a>
+            <button class="btn btn-sm btn-ghost" onclick="Auth.logout()">Sair</button>
         </nav>
     </header>
 
     <main>
-        <h1>Gestão de Empréstimos</h1>
+        <div class="page-header">
+            <h1>Gestão de Empréstimos</h1>
+            <p>Visualize, aprove e gerencie todos os empréstimos do sistema</p>
+        </div>
 
-        <div style="overflow-x: auto;">
-            <table class="admin-table">
-                <thead>
-                    <tr>
-                        <th>Usuário</th>
-                        <th>Livro</th>
-                        <th>Data Solicitação</th>
-                        <th>Status</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="adminTableBody">
-                    <!-- Preenchido via JS -->
-                </tbody>
-            </table>
+        <!-- Stats -->
+        <div class="stats-grid" id="adminStats"></div>
+
+        <!-- Filtros -->
+        <div class="filter-tabs">
+            <button class="filter-tab active" data-filter="todos">Todos</button>
+            <button class="filter-tab" data-filter="pendente">⏳ Pendentes</button>
+            <button class="filter-tab" data-filter="aprovado">✅ Aprovados</button>
+            <button class="filter-tab" data-filter="atrasado">⚠ Atrasados</button>
+            <button class="filter-tab" data-filter="devolvido">📦 Devolvidos</button>
+        </div>
+
+        <!-- Tabela -->
+        <div id="adminTableContainer">
+            <!-- Preenchido via JS -->
         </div>
     </main>
 
+    <script src="js/storage.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/app.js"></script>
     <script>
-        const user = LibraryApp.getCurrentUser();
-        if (!user || user.tipo !== 'admin') window.location.href = 'index.html';
+        const user = Auth.protegerRota('admin');
+        if (!user) throw new Error('Redirecionando...');
 
-        function renderAdminTable() {
-            const loans = LibraryApp.getLoans();
-            const tbody = document.getElementById('adminTableBody');
+        const tableContainer = document.getElementById('adminTableContainer');
+        const statsContainer = document.getElementById('adminStats');
+        const filterTabs = document.querySelectorAll('.filter-tab[data-filter]');
+        let currentFilter = 'todos';
 
-            tbody.innerHTML = loans.map(loan => `
-                <tr>
-                    <td>${loan.usuarioNome}</td>
-                    <td>${loan.livroTitulo}</td>
-                    <td>${loan.dataSaida}</td>
-                    <td><span class="badge badge-${loan.status}">${loan.status}</span></td>
-                    <td class="actions">
-                        ${loan.status === 'pendente' ? 
-                            `<button onclick="LibraryApp.updateLoanStatus(${loan.id}, 'aprovado')" class="btn-small">Aprovar</button>
-                             <button onclick="LibraryApp.updateLoanStatus(${loan.id}, 'devolvido')" class="btn-small btn-secondary">Recusar</button>` 
-                            : ''}
-                        ${loan.status === 'aprovado' ? 
-                            `<button onclick="LibraryApp.updateLoanStatus(${loan.id}, 'devolvido')" class="btn-small" style="background: var(--status-returned)">Marcar Devolvido</button>` 
-                            : ''}
-                        ${loan.status === 'devolvido' ? '<span style="color: var(--text-muted); font-size: 0.8rem;">Finalizado</span>' : ''}
-                    </td>
-                </tr>
-            `).join('');
+        // Sobrescreve as funções do App para re-renderizar após ação
+        const originalAprovar = App.aprovarReserva;
+        App.aprovarReserva = (id) => { originalAprovar(id); renderAll(); };
+
+        const originalRecusar = App.recusarReserva;
+        App.recusarReserva = (id) => { originalRecusar(id); renderAll(); };
+
+        const originalDevolver = App.registrarDevolucao;
+        App.registrarDevolucao = (id) => { originalDevolver(id); renderAll(); };
+
+        // --- Stats ---
+        function renderStats() {
+            const stats = App.getEstatisticas();
+            UI.renderStatsCards(statsContainer, [
+                { icon: '📚', value: stats.totalLivros, label: 'Livros no Acervo' },
+                { icon: '⏳', value: stats.pendentes, label: 'Pendentes' },
+                { icon: '✅', value: stats.aprovados, label: 'Aprovados' },
+                { icon: '⚠️', value: stats.atrasados, label: 'Atrasados' },
+                { icon: '📦', value: stats.devolvidos, label: 'Devolvidos' },
+            ]);
         }
 
-        renderAdminTable();
+        // --- Filtros ---
+        filterTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                filterTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentFilter = tab.dataset.filter;
+                renderTable();
+            });
+        });
+
+        // --- Tabela ---
+        function renderTable() {
+            const emprestimos = Storage.getEmprestimos();
+            // Ordenar: pendentes primeiro, depois por data mais recente
+            emprestimos.sort((a, b) => {
+                const order = { pendente: 0, atrasado: 1, aprovado: 2, devolvido: 3, recusado: 4 };
+                const diff = (order[a.status] ?? 5) - (order[b.status] ?? 5);
+                if (diff !== 0) return diff;
+                return new Date(b.data_reserva) - new Date(a.data_reserva);
+            });
+            UI.renderTabelaAdmin(tableContainer, emprestimos, currentFilter);
+        }
+
+        function renderAll() {
+            renderStats();
+            renderTable();
+        }
+
+        renderAll();
     </script>
 </body>
 </html>

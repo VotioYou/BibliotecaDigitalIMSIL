@@ -3,66 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Acervo - Biblioteca Digital</title>
+    <meta name="description" content="Catálogo digital de livros — Busque, explore e reserve livros do acervo da Biblioteca Digital IMSIL.">
+    <title>Catálogo — Biblioteca Digital IMSIL</title>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
     <header>
-        <div class="logo"><b>📚 Biblioteca Digital</b></div>
+        <div class="logo"><span class="logo-icon">📚</span> Biblioteca Digital</div>
         <nav>
-            <a href="dashboard.html" style="margin-right: 1.5rem; text-decoration: none; color: var(--text-muted);">Início</a>
-            <a href="catalogo.html" style="margin-right: 1.5rem; text-decoration: none; color: var(--primary); font-weight: 600;">Ver Acervo</a>
-            <button onclick="LibraryApp.logout()" class="btn-small btn-secondary">Sair</button>
+            <a href="dashboard.html" class="nav-link">Dashboard</a>
+            <a href="catalogo.html" class="nav-link active">Catálogo</a>
+            <button class="btn btn-sm btn-ghost" onclick="Auth.logout()">Sair</button>
         </nav>
     </header>
 
     <main>
-        <div class="flex-row">
-            <h1>Acervo Digital</h1>
-            <input type="text" id="searchInput" placeholder="Buscar por título ou autor..." style="max-width: 300px;">
+        <div class="page-header flex-row">
+            <div>
+                <h1>Catálogo Digital</h1>
+                <p>Explore o acervo e busque novos livros via Google Books</p>
+            </div>
+            <div class="search-wrapper">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" placeholder="Buscar por título ou autor...">
+            </div>
         </div>
 
-        <div id="bookGrid" class="book-grid">
-            <!-- Preenchido via JS -->
+        <!-- Tabs: Acervo Local / Busca Online -->
+        <div class="filter-tabs mb-2">
+            <button class="filter-tab active" data-source="local">📖 Acervo Local</button>
+            <button class="filter-tab" data-source="api">🌐 Buscar Online (Google Books)</button>
+        </div>
+
+        <div id="catalogContent">
+            <!-- Conteúdo renderizado via JS -->
         </div>
     </main>
 
+    <script src="js/storage.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/ui.js"></script>
     <script src="js/app.js"></script>
     <script>
-        const user = LibraryApp.getCurrentUser();
-        if (!user) window.location.href = 'index.html';
+        const user = Auth.protegerRota('any');
+        if (!user) throw new Error('Redirecionando...');
 
-        function renderBooks(filter = '') {
-            const books = LibraryApp.getBooks();
-            const container = document.getElementById('bookGrid');
-            
-            const filteredBooks = books.filter(b => 
-                b.titulo.toLowerCase().includes(filter.toLowerCase()) || 
-                b.autor.toLowerCase().includes(filter.toLowerCase())
-            );
-
-            container.innerHTML = filteredBooks.map(book => `
-                <div class="book-card">
-                    <img src="${book.capa}" alt="${book.titulo}" class="book-cover">
-                    <div class="book-info">
-                        <div class="book-title">${book.titulo}</div>
-                        <div class="book-author">${book.autor}</div>
-                        <div class="flex-row">
-                            <span class="badge ${book.disponivel ? 'badge-approved' : 'badge-overdue'}">
-                                ${book.disponivel ? 'Disponível' : 'Indisponível'}
-                            </span>
-                            ${book.disponivel ? `<button onclick="LibraryApp.reserveBook(${book.id})" class="btn-small">Reservar</button>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+        // Se for admin, mostra link do painel
+        if (user.tipo === 'admin') {
+            const nav = document.querySelector('nav');
+            const adminLink = document.createElement('a');
+            adminLink.href = 'admin.html';
+            adminLink.className = 'nav-link';
+            adminLink.textContent = 'Admin';
+            nav.insertBefore(adminLink, nav.firstChild);
         }
 
-        document.getElementById('searchInput').addEventListener('input', (e) => {
-            renderBooks(e.target.value);
+        const searchInput = document.getElementById('searchInput');
+        const catalogContent = document.getElementById('catalogContent');
+        const tabs = document.querySelectorAll('.filter-tab[data-source]');
+        let currentSource = 'local';
+        let searchTimeout = null;
+
+        // --- Tab switching ---
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentSource = tab.dataset.source;
+                searchInput.value = '';
+                if (currentSource === 'local') {
+                    renderLocal();
+                } else {
+                    UI.mostrarVazio(catalogContent, 'Digite um termo acima para buscar livros no Google Books.', '🌐');
+                }
+            });
         });
 
-        renderBooks();
+        // --- Busca com debounce ---
+        searchInput.addEventListener('input', () => {
+            clearTimeout(searchTimeout);
+            const query = searchInput.value.trim();
+
+            searchTimeout = setTimeout(async () => {
+                if (currentSource === 'local') {
+                    renderLocal(query);
+                } else {
+                    if (query.length < 2) {
+                        UI.mostrarVazio(catalogContent, 'Digite pelo menos 2 caracteres para buscar.', '🌐');
+                        return;
+                    }
+                    await renderAPI(query);
+                }
+            }, 400);
+        });
+
+        function renderLocal(filtro = '') {
+            const livros = App.getCatalogoLocal(filtro);
+            UI.renderGridLivros(catalogContent, livros, true);
+        }
+
+        async function renderAPI(query) {
+            UI.mostrarLoading(catalogContent, 'Buscando livros...');
+            try {
+                const resultados = await App.buscarLivrosAPI(query);
+                UI.renderGridLivros(catalogContent, resultados, true);
+            } catch (err) {
+                UI.mostrarErro(catalogContent, 'Falha ao conectar com a API. Verifique sua conexão.');
+            }
+        }
+
+        // Render inicial
+        renderLocal();
     </script>
 </body>
 </html>

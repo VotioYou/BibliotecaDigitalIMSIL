@@ -1,46 +1,61 @@
-# 📚 Sistema de Gerenciamento de Biblioteca Digital
+# 📚 Biblioteca Digital IMSIL — V2
 
-Este é um sistema web moderno e funcional para gestão de bibliotecas, desenvolvido com tecnologias web puras. O projeto permite o controle completo de acervo, usuários e empréstimos.
+Sistema web moderno de gerenciamento de biblioteca digital, desenvolvido com **HTML, CSS e JavaScript puro**, com integração real à **Google Books API**.
 
 ## 🚀 Funcionalidades
 
 ### 👤 Área do Aluno
-- **Autenticação**: Login seguro via RA.
-- **Catálogo Digital**: Visualização de livros com busca em tempo real.
-- **Reservas**: Solicitação de reserva de livros disponíveis.
-- **Dashboard**: Acompanhamento de empréstimos, prazos e status.
+- Login seguro via RA
+- Catálogo digital com busca local e online (Google Books API)
+- Reserva de livros com controle de disponibilidade
+- Dashboard com estatísticas pessoais
+- Filtros: ativos, pendentes e histórico completo
+- Detecção automática de atrasos
 
 ### 🛠️ Painel Administrativo
-- **Gestão de Pedidos**: Visualização e aprovação de reservas pendentes.
-- **Controle de Devolução**: Registro de retorno de livros ao acervo.
-- **Status em Tempo Real**: Monitoramento de livros disponíveis e emprestados.
+- Visualização geral com cards de estatísticas
+- Filtros por status (pendentes, aprovados, atrasados, devolvidos)
+- Aprovar ou recusar reservas
+- Registrar devoluções
+- Detecção automática de atrasos
 
-## 🛠️ Tecnologias Utilizadas
+### 🌐 Integração com API
+- Busca em tempo real via Google Books API
+- Normalização dos dados da API para o modelo interno
+- Fallback para dados incompletos
+- Livros buscados são salvos localmente para permitir reservas
 
-- **HTML5 Semantic**: Estrutura organizada e acessível.
-- **CSS3 Moderno**: Layout responsivo, variáveis CSS e estética premium.
-- **JavaScript (ES6+)**: Lógica de negócio, manipulação de DOM e gerenciamento de estado.
-- **LocalStorage**: Persistência de dados diretamente no navegador (sem necessidade de banco de dados externo para testes).
-
-## 📂 Estrutura do Projeto
+## 🏗️ Arquitetura
 
 ```text
 ├── index.html          # Tela de Login
-├── dashboard.html      # Painel do Aluno
-├── catalogo.html       # Acervo de Livros
+├── catalogo.html       # Catálogo (Local + Google Books)
+├── dashboard.html      # Dashboard do Aluno
 ├── admin.html          # Painel Administrativo
 ├── css/
-│   └── style.css       # Estilização Global
+│   └── style.css       # Design System Completo
 └── js/
-    └── app.js          # Lógica e Dados
+    ├── storage.js      # Abstração do localStorage (CRUD)
+    ├── api.js          # Comunicação com Google Books API
+    ├── auth.js         # Autenticação e proteção de rotas
+    ├── ui.js           # Renderização de componentes
+    └── app.js          # Orquestração e regras de negócio
 ```
 
+## 🔄 Máquina de Estados
+
+```
+pendente → aprovado → devolvido
+pendente → recusado
+aprovado → atrasado (automático, se prazo excedido)
+atrasado → devolvido
+```
 
 ## ⚙️ Como Executar
 
-1. Clone o repositório ou baixe a pasta do projeto.
-2. Abra o arquivo `index.html` em qualquer navegador moderno.
-3. (Recomendado) Use a extensão **Live Server** do VS Code para uma melhor experiência de navegação.
+1. Clone o repositório.
+2. Abra `index.html` em qualquer navegador moderno.
+3. (Recomendado) Use a extensão **Live Server** do VS Code.
 
 ---
-Desenvolvido com foco em qualidade e escalabilidade.
+Desenvolvido com foco em **arquitetura, qualidade e escalabilidade**.
