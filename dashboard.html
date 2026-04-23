@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Aluno - Biblioteca</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <div class="logo"><b>📚 Biblioteca Digital</b></div>
+        <nav>
+            <a href="dashboard.html" style="margin-right: 1.5rem; text-decoration: none; color: var(--primary); font-weight: 600;">Início</a>
+            <a href="catalogo.html" style="margin-right: 1.5rem; text-decoration: none; color: var(--text-muted);">Ver Acervo</a>
+            <button onclick="LibraryApp.logout()" class="btn-small btn-secondary">Sair</button>
+        </nav>
+    </header>
+
+    <main>
+        <div class="flex-row">
+            <h1>Olá, <span id="userName">Aluno</span></h1>
+            <a href="catalogo.html" class="btn-small" style="text-decoration: none; display: inline-block; text-align: center;">Buscar Novos Livros</a>
+        </div>
+
+        <section class="mt-4">
+            <h2>Meus Empréstimos e Reservas</h2>
+            <div id="loansList" class="book-grid">
+                <!-- Preenchido via JS -->
+            </div>
+            <div id="noLoans" class="hidden" style="text-align: center; padding: 3rem; color: var(--text-muted);">
+                Você não possui livros reservados ou emprestados no momento.
+            </div>
+        </section>
+    </main>
+
+    <script src="js/app.js"></script>
+    <script>
+        const user = LibraryApp.getCurrentUser();
+        if (!user || user.tipo !== 'aluno') window.location.href = 'index.html';
+        
+        document.getElementById('userName').textContent = user.nome.split(' ')[0];
+
+        function renderLoans() {
+            const allLoans = LibraryApp.getLoans();
+            const myLoans = allLoans.filter(l => l.usuarioId === user.id);
+            const container = document.getElementById('loansList');
+            const noLoans = document.getElementById('noLoans');
+
+            if (myLoans.length === 0) {
+                noLoans.classList.remove('hidden');
+                return;
+            }
+
+            container.innerHTML = myLoans.map(loan => `
+                <div class="book-card">
+                    <div class="book-info">
+                        <div class="book-title">${loan.livroTitulo}</div>
+                        <div class="book-author">Solicitado em: ${loan.dataSaida}</div>
+                        <div class="book-author">Entrega prevista: ${loan.dataEntrega}</div>
+                        <span class="badge badge-${loan.status}">${loan.status}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        renderLoans();
+    </script>
+</body>
+</html>

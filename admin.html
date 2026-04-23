@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Admin - Biblioteca</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <div class="logo"><b>📚 Admin Biblioteca</b></div>
+        <nav>
+            <button onclick="LibraryApp.logout()" class="btn-small btn-secondary">Sair</button>
+        </nav>
+    </header>
+
+    <main>
+        <h1>Gestão de Empréstimos</h1>
+
+        <div style="overflow-x: auto;">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>Usuário</th>
+                        <th>Livro</th>
+                        <th>Data Solicitação</th>
+                        <th>Status</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody id="adminTableBody">
+                    <!-- Preenchido via JS -->
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <script src="js/app.js"></script>
+    <script>
+        const user = LibraryApp.getCurrentUser();
+        if (!user || user.tipo !== 'admin') window.location.href = 'index.html';
+
+        function renderAdminTable() {
+            const loans = LibraryApp.getLoans();
+            const tbody = document.getElementById('adminTableBody');
+
+            tbody.innerHTML = loans.map(loan => `
+                <tr>
+                    <td>${loan.usuarioNome}</td>
+                    <td>${loan.livroTitulo}</td>
+                    <td>${loan.dataSaida}</td>
+                    <td><span class="badge badge-${loan.status}">${loan.status}</span></td>
+                    <td class="actions">
+                        ${loan.status === 'pendente' ? 
+                            `<button onclick="LibraryApp.updateLoanStatus(${loan.id}, 'aprovado')" class="btn-small">Aprovar</button>
+                             <button onclick="LibraryApp.updateLoanStatus(${loan.id}, 'devolvido')" class="btn-small btn-secondary">Recusar</button>` 
+                            : ''}
+                        ${loan.status === 'aprovado' ? 
+                            `<button onclick="LibraryApp.updateLoanStatus(${loan.id}, 'devolvido')" class="btn-small" style="background: var(--status-returned)">Marcar Devolvido</button>` 
+                            : ''}
+                        ${loan.status === 'devolvido' ? '<span style="color: var(--text-muted); font-size: 0.8rem;">Finalizado</span>' : ''}
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        renderAdminTable();
+    </script>
+</body>
+</html>
