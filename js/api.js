@@ -1,10 +1,12 @@
 /**
- * api.js — Módulo de Comunicação com a Google Books API
+ * api.js — Módulo de Comunicação com a Google Books API (Versão Corrigida)
  * Responsável por buscar, normalizar e tratar erros da API externa.
  */
 
 const API = (() => {
     const BASE_URL = 'https://www.googleapis.com/books/v1/volumes';
+    // Pega a key do config.js (gitignored). Funciona sem ela, mas com quota limitada.
+    const API_KEY = (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_BOOKS_API_KEY) ? CONFIG.GOOGLE_BOOKS_API_KEY : '';
     const DEFAULT_MAX_RESULTS = 20;
 
     /**
@@ -18,24 +20,39 @@ const API = (() => {
             return [];
         }
 
-        const url = `${BASE_URL}?q=${encodeURIComponent(query)}&maxResults=${maxResults}&langRestrict=pt&printType=books`;
+        const keyParam = API_KEY ? `&key=${API_KEY}` : '';
+        const url = `${BASE_URL}?q=${encodeURIComponent(query.trim())}&maxResults=${maxResults}&printType=books${keyParam}`;
+
+        console.log(`[API] Iniciando busca: ${url}`);
 
         try {
             const response = await fetch(url);
 
             if (!response.ok) {
+                console.error(`[API] Erro HTTP: ${response.status}`);
+                if (response.status === 429) {
+                    throw new Error('QUOTA_EXCEEDED');
+                }
                 throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
             }
 
             const data = await response.json();
+            
+            console.log(`[API] Resultados brutos encontrados: ${data.totalItems || 0}`);
 
             if (!data.items || data.items.length === 0) {
+                console.warn('[API] Nenhum item retornado para a busca.');
                 return [];
             }
 
-            return data.items.map(normalizarLivro).filter(Boolean);
+            const livrosNormalizados = data.items.map(normalizarLivro).filter(Boolean);
+            console.log(`[API] Busca concluída. ${livrosNormalizados.length} livros processados.`);
+            
+            return livrosNormalizados;
         } catch (error) {
-            console.error('[API] Falha ao buscar livros:', error);
+            console.error('[API] Falha crítica na requisição:', error);
+            // Dica de CORS: Se estiver rodando localmente sem servidor, o navegador pode bloquear.
+            // Recomenda-se usar o VS Code Live Server ou similar.
             throw error;
         }
     }
@@ -51,16 +68,27 @@ const API = (() => {
         const info = item.volumeInfo;
         const imageLinks = info.imageLinks || {};
 
+        // Correção Obrigatória: Garantir HTTPS nas imagens para evitar bloqueio de "Mixed Content"
+        let capaUrl = imageLinks.thumbnail || imageLinks.smallThumbnail || '';
+        if (capaUrl && capaUrl.startsWith('http://')) {
+            capaUrl = capaUrl.replace('http://', 'https://');
+        }
+
+        // Correção Obrigatória: Inconsistência entre total e disponível
+        const total = Math.floor(Math.random() * 5) + 1; // 1 a 5
+        const disponivel = Math.floor(Math.random() * (total + 1)); // 0 a total
+
         return {
             id: `gbooks_${item.id}`,
             titulo: info.title || 'Título Desconhecido',
-            autores: info.authors || ['Autor Desconhecido'],
-            capa: imageLinks.thumbnail || imageLinks.smallThumbnail || '',
-            sinopse: info.description || 'Sinopse não disponível.',
-            categorias: info.categories || ['Sem Categoria'],
-            quantidade_total: Math.floor(Math.random() * 4) + 1,
-            quantidade_disponivel: Math.floor(Math.random() * 4) + 1,
+            autores: info.authors && info.authors.length > 0 ? info.authors : ['Autor Desconhecido'],
+            capa: capaUrl,
+            sinopse: info.description || 'Sinopse não disponível para este exemplar.',
+            categorias: info.categories && info.categories.length > 0 ? info.categories : ['Geral'],
+            quantidade_total: total,
+            quantidade_disponivel: disponivel,
             fonte: 'google_books',
+            link_info: info.infoLink || '#'
         };
     }
 
@@ -71,15 +99,21 @@ const API = (() => {
      */
     async function buscarLivroPorId(volumeId) {
         const cleanId = volumeId.replace('gbooks_', '');
-        const url = `${BASE_URL}/${cleanId}`;
+        const keyParam = API_KEY ? `?key=${API_KEY}` : '';
+        const url = `${BASE_URL}/${cleanId}${keyParam}`;
+
+        console.log(`[API] Buscando detalhes do ID: ${cleanId}`);
 
         try {
             const response = await fetch(url);
-            if (!response.ok) return null;
+            if (!response.ok) {
+                console.error(`[API] Erro ao buscar ID ${cleanId}: ${response.status}`);
+                return null;
+            }
             const data = await response.json();
             return normalizarLivro(data);
         } catch (error) {
-            console.error('[API] Falha ao buscar livro por ID:', error);
+            console.error(`[API] Erro na busca por ID ${cleanId}:`, error);
             return null;
         }
     }

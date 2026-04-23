@@ -40,6 +40,7 @@
         </div>
     </main>
 
+    <script src="js/config.js" onerror="console.log('[Config] config.js não encontrado, usando modo sem API Key.')"></script>
     <script src="js/storage.js"></script>
     <script src="js/api.js"></script>
     <script src="js/auth.js"></script>
@@ -49,13 +50,20 @@
         const user = Auth.protegerRota('any');
         if (!user) throw new Error('Redirecionando...');
 
-        // Se for admin, mostra link do painel
+        // Corrigir link do Dashboard para admin
+        const dashLink = document.querySelector('a[href="dashboard.html"]');
+        if (user.tipo === 'admin' && dashLink) {
+            dashLink.href = 'admin.html';
+            dashLink.textContent = 'Painel Admin';
+        }
+
+        // Se for admin, adiciona link do painel
         if (user.tipo === 'admin') {
             const nav = document.querySelector('nav');
             const adminLink = document.createElement('a');
             adminLink.href = 'admin.html';
             adminLink.className = 'nav-link';
-            adminLink.textContent = 'Admin';
+            adminLink.textContent = 'Gestão';
             nav.insertBefore(adminLink, nav.firstChild);
         }
 
@@ -107,9 +115,18 @@
             UI.mostrarLoading(catalogContent, 'Buscando livros...');
             try {
                 const resultados = await App.buscarLivrosAPI(query);
-                UI.renderGridLivros(catalogContent, resultados, true);
+                if (resultados.length === 0) {
+                    UI.mostrarVazio(catalogContent, `Nenhum resultado encontrado para "${query}".`, '🔍');
+                } else {
+                    UI.renderGridLivros(catalogContent, resultados, true);
+                }
             } catch (err) {
-                UI.mostrarErro(catalogContent, 'Falha ao conectar com a API. Verifique sua conexão.');
+                console.error('[Catalogo] Erro na busca:', err);
+                if (err.message === 'QUOTA_EXCEEDED') {
+                    UI.mostrarErro(catalogContent, 'Limite de buscas do Google atingido. Tente novamente em alguns minutos.');
+                } else {
+                    UI.mostrarErro(catalogContent, 'Falha ao conectar com a API. Verifique sua conexão e tente novamente.');
+                }
             }
         }
 

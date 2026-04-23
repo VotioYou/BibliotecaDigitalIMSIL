@@ -8,3 +8,6 @@ Thumbs.db
 # Backup files
 *.bak
 *.tmp
+
+# API Key (nunca subir)
+js/config.js
