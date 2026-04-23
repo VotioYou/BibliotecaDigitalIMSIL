@@ -35,12 +35,6 @@ Este é um sistema web moderno e funcional para gestão de bibliotecas, desenvol
     └── app.js          # Lógica e Dados
 ```
 
-## 🔑 Credenciais de Acesso (Mock)
-
-| Perfil | Usuário/RA | Senha |
-| :--- | :--- | :--- |
-| **Administrador** | `admin` | `admin` |
-| **Aluno** | `123` | `123` |
 
 ## ⚙️ Como Executar
 
