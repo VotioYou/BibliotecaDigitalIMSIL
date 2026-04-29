@@ -106,6 +106,10 @@ const Storage = (() => {
         return getUsuarios().find(u => u.id === id) || null;
     }
 
+    function salvarUsuarios(usuarios) {
+        _set(KEYS.USUARIOS, usuarios);
+    }
+
     function setCurrentUser(user) {
         _set(KEYS.CURRENT_USER, user);
     }
@@ -182,6 +186,7 @@ const Storage = (() => {
         inicializar,
         getUsuarios,
         getUsuarioPorId,
+        salvarUsuarios,
         setCurrentUser,
         getCurrentUser,
         clearCurrentUser,

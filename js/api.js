@@ -1,125 +1,225 @@
 /**
- * api.js — Módulo de Comunicação com a Google Books API (Versão Corrigida)
- * Responsável por buscar, normalizar e tratar erros da API externa.
+ * api.js — Módulo de Integração de APIs e Pipeline de Dados
+ * Responsável por buscar nas APIs (Google Books, Open Library), normalizar,
+ * filtrar, deduplicar e ranquear os resultados.
  */
 
 const API = (() => {
-    const BASE_URL = 'https://www.googleapis.com/books/v1/volumes';
-    // Pega a key do config.js (gitignored). Funciona sem ela, mas com quota limitada.
+    const GBOOKS_URL = 'https://www.googleapis.com/books/v1/volumes';
+    const OLIBRARY_URL = 'https://openlibrary.org/search.json';
     const API_KEY = (typeof CONFIG !== 'undefined' && CONFIG.GOOGLE_BOOKS_API_KEY) ? CONFIG.GOOGLE_BOOKS_API_KEY : '';
-    const DEFAULT_MAX_RESULTS = 20;
+    
+    // Palavras que indicam títulos irrelevantes
+    const TERMOS_IRRELEVANTES = ['vol.', 'volume', 'issue', 'journal', 'magazine', 'dictionary', 'dicionário', 'encyclopedia'];
 
     /**
-     * Busca livros na Google Books API.
-     * @param {string} query - Termo de busca.
-     * @param {number} maxResults - Quantidade máxima de resultados.
-     * @returns {Promise<Array>} Lista de livros normalizados.
+     * Pipeline principal: Busca, normaliza, filtra, deduplica e ranqueia.
      */
-    async function buscarLivros(query, maxResults = DEFAULT_MAX_RESULTS) {
-        if (!query || query.trim().length < 2) {
+    async function buscarLivros(query) {
+        if (!query || query.trim().length < 2) return [];
+
+        UI.toast('Buscando livros no acervo e na rede...', 'info', 2000);
+        
+        try {
+            // 1. Busca Paralela (Google Books, Open Library, Acervo Local)
+            const [gbooksData, olibraryData, localData] = await Promise.allSettled([
+                fetchGoogleBooks(query),
+                buscarOpenLibrary(query),
+                buscarAcervoLocal(query)
+            ]);
+
+            let brutos = [];
+            if (localData.status === 'fulfilled') brutos = brutos.concat(localData.value);
+            if (gbooksData.status === 'fulfilled') brutos = brutos.concat(gbooksData.value);
+            if (olibraryData.status === 'fulfilled') brutos = brutos.concat(olibraryData.value);
+
+            // 2. Filtragem de Qualidade
+            const filtrados = brutos.filter(filtroQualidade);
+
+            // 3. Deduplicação
+            const unicos = deduplicar(filtrados);
+
+            // 4. Ranking
+            const ranqueados = ranquear(unicos);
+
+            return ranqueados;
+        } catch (error) {
+            console.error('[API] Erro no pipeline de busca:', error);
             return [];
         }
+    }
 
+    /**
+     * Busca no Acervo Local
+     */
+    async function buscarAcervoLocal(query) {
+        const livros = typeof Storage !== 'undefined' ? Storage.getLivros() : [];
+        if (!query) return livros.map(l => ({ ...l, fonte: 'local' }));
+        
+        const termoLower = query.toLowerCase();
+        return livros.filter(l => 
+            l.titulo.toLowerCase().includes(termoLower) ||
+            (l.autores && l.autores.some(a => a.toLowerCase().includes(termoLower)))
+        ).map(l => ({ ...l, fonte: 'local' }));
+    }
+
+    /**
+     * Busca no Google Books e normaliza.
+     */
+    async function fetchGoogleBooks(query) {
         const keyParam = API_KEY ? `&key=${API_KEY}` : '';
-        const url = `${BASE_URL}?q=${encodeURIComponent(query.trim())}&maxResults=${maxResults}&printType=books${keyParam}`;
+        const url = `${GBOOKS_URL}?q=${encodeURIComponent(query.trim())}&maxResults=20&printType=books${keyParam}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Google Books indisponível');
+        const data = await res.json();
+        
+        if (!data.items) return [];
+        return data.items.map(item => {
+            const info = item.volumeInfo;
+            const imgLinks = info.imageLinks || {};
+            let capa = imgLinks.thumbnail || imgLinks.smallThumbnail || '';
+            if (capa) capa = capa.replace('http://', 'https://');
+            
+            return {
+                id: `gbooks_${item.id}`,
+                titulo: info.title ? info.title.trim() : '',
+                autores: info.authors ? info.authors : [],
+                capa: capa,
+                sinopse: info.description ? info.description.trim() : '',
+                categorias: info.categories ? info.categories : ['Geral'],
+                quantidade_total: Math.floor(Math.random() * 5) + 1,
+                fonte: 'google_books'
+            };
+        });
+    }
 
-        console.log(`[API] Iniciando busca: ${url}`);
+    /**
+     * Busca na Open Library e normaliza.
+     */
+    async function buscarOpenLibrary(query) {
+        const url = `${OLIBRARY_URL}?q=${encodeURIComponent(query.trim())}&limit=20&language=por`; // prioriza pt-br
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Open Library indisponível');
+        const data = await res.json();
+        
+        if (!data.docs) return [];
+        return data.docs.map(doc => {
+            return {
+                id: `ol_${doc.key.replace('/works/', '')}`,
+                titulo: doc.title ? doc.title.trim() : '',
+                autores: doc.author_name ? doc.author_name : [],
+                capa: doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg` : '',
+                sinopse: doc.first_sentence ? (typeof doc.first_sentence === 'string' ? doc.first_sentence : doc.first_sentence.value) : '',
+                categorias: doc.subject ? doc.subject.slice(0, 3) : ['Geral'],
+                quantidade_total: Math.floor(Math.random() * 5) + 1,
+                fonte: 'open_library'
+            };
+        });
+    }
 
+    /**
+     * Gera lista curada para a Home Inteligente (Sem busca)
+     */
+    async function buscarCuradoriaHome() {
         try {
-            const response = await fetch(url);
-
-            if (!response.ok) {
-                console.error(`[API] Erro HTTP: ${response.status}`);
-                if (response.status === 429) {
-                    throw new Error('QUOTA_EXCEEDED');
-                }
-                throw new Error(`Erro na API: ${response.status} ${response.statusText}`);
-            }
-
-            const data = await response.json();
+            // Pega acervo local
+            const localData = await buscarAcervoLocal('');
             
-            console.log(`[API] Resultados brutos encontrados: ${data.totalItems || 0}`);
+            // Complementa com livros populares de literatura brasileira e clássicos
+            const [gbooksData, olibraryData] = await Promise.allSettled([
+                fetchGoogleBooks('clássicos da literatura'),
+                buscarOpenLibrary('clássicos')
+            ]);
 
-            if (!data.items || data.items.length === 0) {
-                console.warn('[API] Nenhum item retornado para a busca.');
-                return [];
-            }
+            let brutos = [...localData];
+            if (gbooksData.status === 'fulfilled') brutos = brutos.concat(gbooksData.value);
+            if (olibraryData.status === 'fulfilled') brutos = brutos.concat(olibraryData.value);
 
-            const livrosNormalizados = data.items.map(normalizarLivro).filter(Boolean);
-            console.log(`[API] Busca concluída. ${livrosNormalizados.length} livros processados.`);
-            
-            return livrosNormalizados;
+            // Filtragem rígida
+            const filtrados = brutos.filter(filtroQualidade);
+
+            // Deduplicação
+            const unicos = deduplicar(filtrados);
+
+            // Ranking para home (prioriza ainda mais livros bem descritos e locais)
+            return ranquear(unicos);
         } catch (error) {
-            console.error('[API] Falha crítica na requisição:', error);
-            // Dica de CORS: Se estiver rodando localmente sem servidor, o navegador pode bloquear.
-            // Recomenda-se usar o VS Code Live Server ou similar.
-            throw error;
+            console.error('[API] Erro ao buscar curadoria:', error);
+            // Em caso de erro, retorna pelo menos o que conseguir do local
+            return buscarAcervoLocal('').then(l => ranquear(deduplicar(l.filter(filtroQualidade))));
         }
     }
 
     /**
-     * Normaliza um item da Google Books API para o modelo interno do sistema.
-     * @param {Object} item - Item cru da API.
-     * @returns {Object|null} Livro normalizado ou null se inválido.
+     * Filtro de Qualidade Crítico
      */
-    function normalizarLivro(item) {
-        if (!item || !item.volumeInfo) return null;
+    function filtroQualidade(livro) {
+        if (!livro.capa) return false;
+        if (!livro.autores || livro.autores.length === 0 || !livro.autores[0].trim()) return false;
+        if (!livro.titulo || livro.titulo.length < 3) return false;
+        
+        const tituloBaixo = livro.titulo.toLowerCase();
+        if (TERMOS_IRRELEVANTES.some(termo => tituloBaixo.includes(termo))) return false;
+        
+        if (!livro.sinopse || livro.sinopse.length < 30) return false;
 
-        const info = item.volumeInfo;
-        const imageLinks = info.imageLinks || {};
-
-        // Correção Obrigatória: Garantir HTTPS nas imagens para evitar bloqueio de "Mixed Content"
-        let capaUrl = imageLinks.thumbnail || imageLinks.smallThumbnail || '';
-        if (capaUrl && capaUrl.startsWith('http://')) {
-            capaUrl = capaUrl.replace('http://', 'https://');
-        }
-
-        // Correção Obrigatória: Inconsistência entre total e disponível
-        const total = Math.floor(Math.random() * 5) + 1; // 1 a 5
-        const disponivel = Math.floor(Math.random() * (total + 1)); // 0 a total
-
-        return {
-            id: `gbooks_${item.id}`,
-            titulo: info.title || 'Título Desconhecido',
-            autores: info.authors && info.authors.length > 0 ? info.authors : ['Autor Desconhecido'],
-            capa: capaUrl,
-            sinopse: info.description || 'Sinopse não disponível para este exemplar.',
-            categorias: info.categories && info.categories.length > 0 ? info.categories : ['Geral'],
-            quantidade_total: total,
-            quantidade_disponivel: disponivel,
-            fonte: 'google_books',
-            link_info: info.infoLink || '#'
-        };
+        return true;
     }
 
     /**
-     * Busca um livro específico por ID na Google Books API.
-     * @param {string} volumeId - ID do volume no Google Books.
-     * @returns {Promise<Object|null>} Livro normalizado ou null.
+     * Deduplicação por chave única: titulo + 1º autor (lowercase)
      */
-    async function buscarLivroPorId(volumeId) {
-        const cleanId = volumeId.replace('gbooks_', '');
-        const keyParam = API_KEY ? `?key=${API_KEY}` : '';
-        const url = `${BASE_URL}/${cleanId}${keyParam}`;
+    function deduplicar(livros) {
+        const vistos = new Set();
+        return livros.filter(livro => {
+            const tituloNorm = livro.titulo.toLowerCase().trim().replace(/[^\w\s]/gi, '');
+            const autorNorm = livro.autores[0].toLowerCase().trim().replace(/[^\w\s]/gi, '');
+            const chave = `${tituloNorm}_${autorNorm}`;
+            
+            if (vistos.has(chave)) return false;
+            vistos.add(chave);
+            return true;
+        });
+    }
 
-        console.log(`[API] Buscando detalhes do ID: ${cleanId}`);
-
-        try {
-            const response = await fetch(url);
-            if (!response.ok) {
-                console.error(`[API] Erro ao buscar ID ${cleanId}: ${response.status}`);
-                return null;
+    /**
+     * Ranking: priorizar livros locais, capas, descrições completas
+     */
+    function ranquear(livros) {
+        return livros.sort((a, b) => {
+            let scoreA = 0;
+            let scoreB = 0;
+            
+            // Prioridade máxima: Acervo Local
+            if (a.fonte === 'local') scoreA += 10;
+            if (b.fonte === 'local') scoreB += 10;
+            
+            // Prioridade: Sinopse grande
+            if (a.sinopse.length > 200) scoreA += 3;
+            else if (a.sinopse.length > 100) scoreA += 2;
+            else if (a.sinopse.length > 50) scoreA += 1;
+            
+            if (b.sinopse.length > 200) scoreB += 3;
+            else if (b.sinopse.length > 100) scoreB += 2;
+            else if (b.sinopse.length > 50) scoreB += 1;
+            
+            // Prioridade: Fonte Google Books é geralmente melhor formatada
+            if (a.fonte === 'google_books') scoreA += 1;
+            if (b.fonte === 'google_books') scoreB += 1;
+            
+            return scoreB - scoreA;
+        }).map(l => {
+            // Garante quantidade disponível
+            if (l.fonte !== 'local') {
+                l.quantidade_disponivel = Math.floor(Math.random() * (l.quantidade_total + 1));
             }
-            const data = await response.json();
-            return normalizarLivro(data);
-        } catch (error) {
-            console.error(`[API] Erro na busca por ID ${cleanId}:`, error);
-            return null;
-        }
+            return l;
+        });
     }
 
     return {
         buscarLivros,
-        buscarLivroPorId,
+        buscarOpenLibrary,
+        buscarCuradoriaHome
     };
 })();

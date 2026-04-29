@@ -21,18 +21,12 @@
         <div class="page-header flex-row">
             <div>
                 <h1>Catálogo Digital</h1>
-                <p>Explore o acervo e busque novos livros via Google Books</p>
+                <p>Explore o acervo unificado da Biblioteca Digital IMSIL</p>
             </div>
             <div class="search-wrapper">
                 <span class="search-icon">🔍</span>
                 <input type="text" id="searchInput" placeholder="Buscar por título ou autor...">
             </div>
-        </div>
-
-        <!-- Tabs: Acervo Local / Busca Online -->
-        <div class="filter-tabs mb-2">
-            <button class="filter-tab active" data-source="local">📖 Acervo Local</button>
-            <button class="filter-tab" data-source="api">🌐 Buscar Online (Google Books)</button>
         </div>
 
         <div id="catalogContent">
@@ -69,24 +63,7 @@
 
         const searchInput = document.getElementById('searchInput');
         const catalogContent = document.getElementById('catalogContent');
-        const tabs = document.querySelectorAll('.filter-tab[data-source]');
-        let currentSource = 'local';
         let searchTimeout = null;
-
-        // --- Tab switching ---
-        tabs.forEach(tab => {
-            tab.addEventListener('click', () => {
-                tabs.forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                currentSource = tab.dataset.source;
-                searchInput.value = '';
-                if (currentSource === 'local') {
-                    renderLocal();
-                } else {
-                    UI.mostrarVazio(catalogContent, 'Digite um termo acima para buscar livros no Google Books.', '🌐');
-                }
-            });
-        });
 
         // --- Busca com debounce ---
         searchInput.addEventListener('input', () => {
@@ -94,25 +71,37 @@
             const query = searchInput.value.trim();
 
             searchTimeout = setTimeout(async () => {
-                if (currentSource === 'local') {
-                    renderLocal(query);
-                } else {
-                    if (query.length < 2) {
-                        UI.mostrarVazio(catalogContent, 'Digite pelo menos 2 caracteres para buscar.', '🌐');
-                        return;
-                    }
-                    await renderAPI(query);
+                if (query.length === 0) {
+                    await renderHome();
+                    return;
                 }
-            }, 400);
+                
+                if (query.length < 2) {
+                    UI.mostrarVazio(catalogContent, 'Digite pelo menos 2 caracteres para buscar.', '🔍');
+                    return;
+                }
+                
+                await renderBusca(query);
+            }, 500);
         });
 
-        function renderLocal(filtro = '') {
-            const livros = App.getCatalogoLocal(filtro);
-            UI.renderGridLivros(catalogContent, livros, true);
+        async function renderHome() {
+            UI.mostrarLoading(catalogContent, 'Preparando curadoria de livros para você...');
+            try {
+                const resultados = await App.getCuradoriaHome();
+                if (resultados.length === 0) {
+                    UI.mostrarVazio(catalogContent, 'Nenhum livro disponível no momento.', '📚');
+                } else {
+                    UI.renderGridLivros(catalogContent, resultados, true);
+                }
+            } catch (err) {
+                console.error('[Catalogo] Erro ao carregar home:', err);
+                UI.mostrarErro(catalogContent, 'Falha ao carregar catálogo. Tente novamente mais tarde.');
+            }
         }
 
-        async function renderAPI(query) {
-            UI.mostrarLoading(catalogContent, 'Buscando livros...');
+        async function renderBusca(query) {
+            UI.mostrarLoading(catalogContent, 'Buscando em todo o acervo...');
             try {
                 const resultados = await App.buscarLivrosAPI(query);
                 if (resultados.length === 0) {
@@ -122,16 +111,12 @@
                 }
             } catch (err) {
                 console.error('[Catalogo] Erro na busca:', err);
-                if (err.message === 'QUOTA_EXCEEDED') {
-                    UI.mostrarErro(catalogContent, 'Limite de buscas do Google atingido. Tente novamente em alguns minutos.');
-                } else {
-                    UI.mostrarErro(catalogContent, 'Falha ao conectar com a API. Verifique sua conexão e tente novamente.');
-                }
+                UI.mostrarErro(catalogContent, 'Falha ao realizar a busca. Verifique sua conexão e tente novamente.');
             }
         }
 
         // Render inicial
-        renderLocal();
+        renderHome();
     </script>
 </body>
 </html>

@@ -27,6 +27,39 @@ const Auth = (() => {
     }
 
     /**
+     * Registra um novo usuário no sistema.
+     * @param {string} ra
+     * @param {string} nome
+     * @param {string} senha
+     * @param {string} tipo
+     * @returns {{ success: boolean, error?: string }}
+     */
+    function registrar(ra, nome, senha, tipo = 'aluno') {
+        if (!ra || !nome || !senha) {
+            return { success: false, error: 'Preencha todos os campos.' };
+        }
+
+        const usuarios = Storage.getUsuarios();
+        const existente = usuarios.find(u => u.ra === ra);
+
+        if (existente) {
+            return { success: false, error: 'RA já cadastrado no sistema.' };
+        }
+
+        const novoUser = {
+            id: `user_${Date.now()}`,
+            ra: ra.trim(),
+            nome: nome.trim(),
+            senha: senha,
+            tipo: tipo
+        };
+
+        usuarios.push(novoUser);
+        Storage.salvarUsuarios(usuarios);
+        return { success: true };
+    }
+
+    /**
      * Encerra a sessão e redireciona para a tela de login.
      */
     function logout() {
@@ -81,6 +114,7 @@ const Auth = (() => {
 
     return {
         login,
+        registrar,
         logout,
         getUsuarioAtual,
         estaAutenticado,

@@ -200,6 +200,18 @@ const App = (() => {
     }
 
     /**
+     * Busca livros curados para a Home
+     */
+    async function getCuradoriaHome() {
+        const resultados = await API.buscarCuradoriaHome();
+        resultados.forEach(livro => {
+            const existente = Storage.getLivroPorId(livro.id);
+            if (!existente) Storage.salvarLivro(livro);
+        });
+        return resultados;
+    }
+
+    /**
      * Retorna o catálogo combinado (local + buscados).
      * @param {string} filtro
      * @returns {Array}
@@ -274,6 +286,7 @@ const App = (() => {
         registrarDevolucao,
         verificarAtrasos,
         buscarLivrosAPI,
+        getCuradoriaHome,
         getCatalogoLocal,
         verDetalhes,
         getEstatisticas,

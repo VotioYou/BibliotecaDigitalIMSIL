@@ -13,7 +13,12 @@
             <h1><span class="logo-icon">📚</span> Biblioteca Digital</h1>
             <p class="subtitle">IMSIL — Sistema de Gestão de Acervo</p>
 
-            <form id="loginForm">
+            <div class="auth-tabs">
+                <button class="auth-tab active" onclick="toggleAuth('login')">Login</button>
+                <button class="auth-tab" onclick="toggleAuth('register')">Cadastro</button>
+            </div>
+
+            <form id="loginForm" class="auth-form active">
                 <div class="form-group">
                     <label for="loginRA">RA / Login</label>
                     <input type="text" id="loginRA" placeholder="Digite seu RA ou login" required autocomplete="username">
@@ -25,9 +30,22 @@
                 <button type="submit" class="btn btn-primary btn-lg">Entrar no Sistema</button>
             </form>
 
-            <p class="login-hint">
-                Aluno: <b>123 / 123</b> &nbsp;|&nbsp; Admin: <b>admin / admin</b>
-            </p>
+            <form id="registerForm" class="auth-form" style="display: none;">
+                <div class="form-group">
+                    <label for="regNome">Nome Completo</label>
+                    <input type="text" id="regNome" placeholder="Seu nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="regRA">RA</label>
+                    <input type="text" id="regRA" placeholder="Seu Registro Acadêmico" required>
+                </div>
+                <div class="form-group">
+                    <label for="regSenha">Senha</label>
+                    <input type="password" id="regSenha" placeholder="Crie uma senha" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-lg">Criar Conta</button>
+            </form>
+
         </div>
     </div>
 
@@ -47,6 +65,27 @@
             }
         })();
 
+        function toggleAuth(type) {
+            const tabs = document.querySelectorAll('.auth-tab');
+            const forms = document.querySelectorAll('.auth-form');
+            
+            tabs.forEach(t => t.classList.remove('active'));
+            forms.forEach(f => {
+                f.classList.remove('active');
+                f.style.display = 'none';
+            });
+            
+            if (type === 'login') {
+                tabs[0].classList.add('active');
+                document.getElementById('loginForm').style.display = 'block';
+                setTimeout(() => document.getElementById('loginForm').classList.add('active'), 10);
+            } else {
+                tabs[1].classList.add('active');
+                document.getElementById('registerForm').style.display = 'block';
+                setTimeout(() => document.getElementById('registerForm').classList.add('active'), 10);
+            }
+        }
+
         document.getElementById('loginForm').addEventListener('submit', (e) => {
             e.preventDefault();
             const ra = document.getElementById('loginRA').value.trim();
@@ -59,6 +98,23 @@
                 setTimeout(() => {
                     window.location.href = result.user.tipo === 'admin' ? 'admin.html' : 'dashboard.html';
                 }, 600);
+            } else {
+                UI.toast(result.error, 'error');
+            }
+        });
+
+        document.getElementById('registerForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const nome = document.getElementById('regNome').value.trim();
+            const ra = document.getElementById('regRA').value.trim();
+            const senha = document.getElementById('regSenha').value;
+
+            const result = Auth.registrar(ra, nome, senha, 'aluno');
+
+            if (result.success) {
+                UI.toast('Conta criada com sucesso! Faça login.', 'success');
+                document.getElementById('registerForm').reset();
+                toggleAuth('login');
             } else {
                 UI.toast(result.error, 'error');
             }
