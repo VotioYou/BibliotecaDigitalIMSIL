@@ -24,3 +24,8 @@ A **Biblioteca Digital IMSIL** é uma plataforma moderna e inteligente para gest
 
 ---
 *Biblioteca Digital IMSIL — O conhecimento ao seu alcance.*
+
+Vinicius Ferreira de Oliveira
+Kaio dos Santos Barbosa
+Bianca-Stefani Debrieri Custódio Jorge
+Natalia Neves do Monte
